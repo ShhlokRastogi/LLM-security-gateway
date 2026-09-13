@@ -185,6 +185,53 @@ def create_policy_endpoint(
     return policy_engine.create_policy(cid, policy)
 
 
+# ==============================================================================
+# 3. DECLARATIVE POLICIES & TEMPLATES ENDPOINTS (/v1/policies & /v1/policy-templates)
+# ==============================================================================
+
+class ApplyTemplateRequest(BaseModel):
+    agent_id: str
+    customizations: Optional[Dict[str, Any]] = None
+
+
+@router.get("/policy-templates", response_model=PolicyTemplatesResponse)
+@router.get("/policies/templates", response_model=PolicyTemplatesResponse)
+def list_policy_templates_endpoint():
+    """List all available pre-existing policy templates."""
+    templates = template_registry.get_template_info_list()
+    return PolicyTemplatesResponse(templates=templates, count=len(templates))
+
+
+@router.get("/policy-templates/{template_name}", response_model=PolicyTemplateInfo)
+@router.get("/policies/templates/{template_name}", response_model=PolicyTemplateInfo)
+def get_policy_template_endpoint(template_name: str):
+    """Get full details of a specific policy template."""
+    cfg = template_registry.get(template_name)
+    if not cfg:
+        raise HTTPException(status_code=404, detail=f"Policy template '{template_name}' not found.")
+    version = template_registry.get_version(template_name)
+    clean_name = template_name.split("@")[0]
+    return PolicyTemplateInfo(
+        name=clean_name,
+        version=version,
+        description=cfg.description or "",
+        allowed_tools=cfg.allowed_tools,
+        denied_tools=cfg.denied_tools or [],
+        approval_required_tools=cfg.approval_required_tools or [],
+        has_argument_constraints=bool(cfg.argument_constraints),
+    )
+
+
+@router.post("/policies", response_model=PolicyDocument)
+def create_policy_endpoint(
+    policy: PolicyDocument,
+    x_client_id: Optional[str] = Header(None),
+):
+    """Create or register a custom declarative security policy document."""
+    cid = policy.client_id or get_client_id(x_client_id)
+    return policy_engine.create_policy(cid, policy)
+
+
 @router.get("/policies", response_model=List[PolicyDocument])
 def list_policies_endpoint(
     x_client_id: Optional[str] = Header(None),
@@ -218,42 +265,6 @@ def delete_policy_endpoint(
     if not deleted:
         raise HTTPException(status_code=404, detail=f"Policy '{policy_id}' not found for deletion.")
     return {"deleted": True, "policy_id": policy_id}
-
-
-# ==============================================================================
-# 4. POLICY TEMPLATES ENDPOINTS (/v1/policy-templates)
-# ==============================================================================
-
-class ApplyTemplateRequest(BaseModel):
-    agent_id: str
-    customizations: Optional[Dict[str, Any]] = None
-
-
-@router.get("/policy-templates", response_model=PolicyTemplatesResponse)
-@router.get("/policies/templates", response_model=PolicyTemplatesResponse)
-def list_policy_templates_endpoint():
-    """List all available pre-existing policy templates."""
-    templates = template_registry.get_template_info_list()
-    return PolicyTemplatesResponse(templates=templates, count=len(templates))
-
-
-@router.get("/policy-templates/{template_name}", response_model=PolicyTemplateInfo)
-@router.get("/policies/templates/{template_name}", response_model=PolicyTemplateInfo)
-def get_policy_template_endpoint(template_name: str):
-    """Get full details of a specific policy template."""
-    cfg = template_registry.get(template_name)
-    if not cfg:
-        raise HTTPException(status_code=404, detail=f"Policy template '{template_name}' not found.")
-    version = template_registry.get_version(template_name)
-    clean_name = template_name.split("@")[0]
-    return PolicyTemplateInfo(
-        name=f"{clean_name}@{version}",
-        description=cfg.description or "",
-        allowed_tools=cfg.allowed_tools,
-        denied_tools=cfg.denied_tools or [],
-        approval_required_tools=cfg.approval_required_tools or [],
-        has_argument_constraints=bool(cfg.argument_constraints),
-    )
 
 
 @router.post("/policy-templates/{template_name}/apply")

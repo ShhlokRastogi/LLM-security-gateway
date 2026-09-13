@@ -263,7 +263,8 @@ class PolicyTemplateRegistry:
             version = self.TEMPLATE_VERSIONS.get(name, "1.0")
             infos.append(
                 PolicyTemplateInfo(
-                    name=f"{name}@{version}",
+                    name=name,
+                    version=version,
                     description=cfg.description or "",
                     allowed_tools=cfg.allowed_tools,
                     denied_tools=cfg.denied_tools or [],

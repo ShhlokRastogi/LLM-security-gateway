@@ -75,6 +75,7 @@ class BatchActionsSecurityDecision(BaseModel):
 class PolicyTemplateInfo(BaseModel):
     """Summary of a pre-existing policy template."""
     name: str
+    version: Optional[str] = "1.0"
     description: str
     allowed_tools: Optional[List[str]] = None
     denied_tools: List[str] = Field(default_factory=list)
