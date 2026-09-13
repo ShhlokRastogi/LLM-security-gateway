@@ -138,3 +138,37 @@ templates:
       - "delete_database"
       - "deploy_production"
     allow_unknown_tools: true
+
+  financial_agent:
+    description: "Governs financial operations, transfers, and refunds with strict monetary limits and approval gates."
+    allowed_tools:
+      - "search_orders"
+      - "get_customer"
+      - "refund_payment"
+      - "check_balance"
+      - "transfer_funds"
+    denied_tools:
+      - "execute_code"
+      - "delete_file"
+      - "query_database"
+    approval_required_tools:
+      - "refund_payment"
+      - "transfer_funds"
+    allow_unknown_tools: false
+
+  production_agent:
+    description: "High-security production deployment agent with read access and mandatory supervisor oversight."
+    allowed_tools:
+      - "search_orders"
+      - "get_customer"
+      - "read_file"
+      - "send_email"
+    denied_tools:
+      - "delete_file"
+      - "execute_code"
+      - "query_database"
+      - "sudo"
+      - "format_disk"
+    approval_required_tools:
+      - "send_email"
+    allow_unknown_tools: false

@@ -151,11 +151,61 @@ BUILTIN_TEMPLATES: Dict[str, ActionPolicyConfig] = {
         ],
         allow_unknown_tools=True,
     ),
+    "financial_agent": ActionPolicyConfig(
+        description="Governs financial operations, transfers, and refunds with strict monetary limits and approval gates.",
+        allowed_tools=[
+            "search_orders",
+            "get_customer",
+            "refund_payment",
+            "check_balance",
+            "transfer_funds",
+        ],
+        denied_tools=[
+            "execute_code",
+            "delete_file",
+            "query_database",
+        ],
+        approval_required_tools=["refund_payment", "transfer_funds"],
+        allow_unknown_tools=False,
+        argument_constraints={
+            "refund_payment": {
+                "amount": ActionArgumentConstraint(max_value=10000.0),
+            }
+        },
+    ),
+    "production_agent": ActionPolicyConfig(
+        description="High-security production deployment agent with read access and mandatory supervisor oversight.",
+        allowed_tools=[
+            "search_orders",
+            "get_customer",
+            "read_file",
+            "send_email",
+        ],
+        denied_tools=[
+            "delete_file",
+            "execute_code",
+            "query_database",
+            "sudo",
+            "format_disk",
+        ],
+        approval_required_tools=["send_email"],
+        allow_unknown_tools=False,
+    ),
 }
 
 
 class PolicyTemplateRegistry:
-    """Registry managing pre-existing and loaded action policy templates."""
+    """Registry managing pre-existing, versioned, and custom action policy templates."""
+
+    TEMPLATE_VERSIONS = {
+        "read_only_agent": "1.0",
+        "sql_analyst": "1.0",
+        "coding_agent_sandboxed": "1.0",
+        "customer_support_agent": "1.0",
+        "financial_agent": "1.0",
+        "production_agent": "1.0",
+        "full_access_supervised": "1.0",
+    }
 
     def __init__(self, templates_file: Optional[str] = None) -> None:
         self.templates: Dict[str, ActionPolicyConfig] = dict(BUILTIN_TEMPLATES)
@@ -191,11 +241,18 @@ class PolicyTemplateRegistry:
                         argument_constraints=constraints,
                     )
         except Exception:
-            # Keep built-ins if parsing error occurs
             pass
 
     def get(self, name: str) -> Optional[ActionPolicyConfig]:
-        return self.templates.get(name)
+        # Handle versioned name syntax: e.g. "sql_analyst@1.0" or "sql_analyst"
+        base_name = name.split("@")[0] if "@" in name else name
+        return self.templates.get(base_name)
+
+    def get_version(self, name: str) -> str:
+        base_name = name.split("@")[0] if "@" in name else name
+        if "@" in name:
+            return name.split("@")[1]
+        return self.TEMPLATE_VERSIONS.get(base_name, "1.0")
 
     def list(self) -> Dict[str, ActionPolicyConfig]:
         return dict(self.templates)
@@ -203,9 +260,10 @@ class PolicyTemplateRegistry:
     def get_template_info_list(self) -> List[PolicyTemplateInfo]:
         infos = []
         for name, cfg in self.templates.items():
+            version = self.TEMPLATE_VERSIONS.get(name, "1.0")
             infos.append(
                 PolicyTemplateInfo(
-                    name=name,
+                    name=f"{name}@{version}",
                     description=cfg.description or "",
                     allowed_tools=cfg.allowed_tools,
                     denied_tools=cfg.denied_tools or [],

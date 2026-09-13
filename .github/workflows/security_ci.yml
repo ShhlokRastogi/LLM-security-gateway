@@ -1,0 +1,38 @@
+name: Security Gateway CI & Regression Suite
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  security-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - name: Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e .
+        pip install pytest httpx pyyaml
+
+    - name: Run Unit & Integration Tests
+      run: |
+        pytest tests -v
+
+    - name: Run Input & Output Security Benchmarks
+      run: |
+        python evaluation/runners/benchmark_runner.py
+
+    - name: Run Action Security & Tool Permission Benchmarks
+      run: |
+        python evaluation/action_security/action_benchmark_runner.py
