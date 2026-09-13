@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "llm-security-gateway"
+version = "1.0.0"
+description = "Universal, Application-Agnostic LLM Security Gateway and Guardrails Service"
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [{ name = "AI Engineering Team" }]
+dependencies = [
+    "pydantic>=2.0.0",
+    "fastapi>=0.100.0",
+    "uvicorn>=0.20.0",
+    "httpx>=0.24.0",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.20.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*", "security_gateway*"]

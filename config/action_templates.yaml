@@ -1,0 +1,140 @@
+version: "1.0"
+templates:
+  read_only_agent:
+    description: "Restricts the agent strictly to non-mutating search and read tools. All writes, updates, deletions, and commands are blocked."
+    allowed_tools:
+      - "web_search"
+      - "read_file"
+      - "search_kb"
+      - "search_documentation"
+      - "query_database"
+      - "get_weather"
+      - "list_directory"
+      - "list_dir"
+      - "inspect_element"
+    denied_tools:
+      - "write_file"
+      - "delete_file"
+      - "execute_command"
+      - "bash"
+      - "powershell"
+      - "execute_sql"
+      - "send_email"
+      - "create_user"
+      - "update_record"
+      - "delete_record"
+    approval_required_tools: []
+    allow_unknown_tools: false
+
+  sql_analyst:
+    description: "Permits SQL database query execution while strictly prohibiting destructive DDL and DML statements (DROP, TRUNCATE, ALTER, DELETE, UPDATE, INSERT)."
+    allowed_tools:
+      - "sql_query"
+      - "run_sql"
+      - "explain_query"
+      - "describe_table"
+      - "list_tables"
+      - "get_schema"
+      - "read_file"
+    denied_tools:
+      - "execute_command"
+      - "bash"
+      - "powershell"
+      - "write_file"
+      - "delete_file"
+      - "send_email"
+    approval_required_tools: []
+    allow_unknown_tools: false
+    argument_constraints:
+      sql_query:
+        query:
+          forbidden_keywords:
+            - "DROP"
+            - "TRUNCATE"
+            - "ALTER"
+            - "DELETE"
+            - "UPDATE"
+            - "INSERT"
+            - "GRANT"
+            - "REVOKE"
+      run_sql:
+        query:
+          forbidden_keywords:
+            - "DROP"
+            - "TRUNCATE"
+            - "ALTER"
+            - "DELETE"
+            - "UPDATE"
+            - "INSERT"
+            - "GRANT"
+            - "REVOKE"
+
+  coding_agent_sandboxed:
+    description: "Provides coding agent filesystem access confined to safe workspace directories and prevents path traversal (../) or dangerous system commands."
+    allowed_tools:
+      - "read_file"
+      - "write_file"
+      - "list_dir"
+      - "run_linter"
+      - "run_tests"
+      - "search_code"
+    denied_tools:
+      - "sudo"
+      - "format_disk"
+      - "reboot"
+      - "shutdown"
+      - "drop_db"
+    approval_required_tools:
+      - "run_tests"
+    allow_unknown_tools: false
+    argument_constraints:
+      read_file:
+        path:
+          forbidden_patterns:
+            - "(?:^|[\\\\/])\\.\\.(?:[\\\\/]|$)"
+            - "^[a-zA-Z]:\\\\(?:Windows|Program Files)"
+            - "^/(?:etc|root|var|boot|sys)"
+      write_file:
+        path:
+          forbidden_patterns:
+            - "(?:^|[\\\\/])\\.\\.(?:[\\\\/]|$)"
+            - "^[a-zA-Z]:\\\\(?:Windows|Program Files)"
+            - "^/(?:etc|root|var|boot|sys)"
+
+  customer_support_agent:
+    description: "Allows standard customer service lookups, but enforces human approval on state-altering or financial actions (refunds, external emails, password resets)."
+    allowed_tools:
+      - "lookup_customer"
+      - "get_order_status"
+      - "search_faq"
+      - "view_ticket"
+      - "draft_reply"
+      - "issue_refund"
+      - "send_email"
+      - "reset_password"
+      - "cancel_order"
+    denied_tools:
+      - "execute_command"
+      - "run_sql"
+      - "delete_customer"
+      - "drop_table"
+    approval_required_tools:
+      - "issue_refund"
+      - "send_email"
+      - "reset_password"
+      - "cancel_order"
+    allow_unknown_tools: false
+
+  full_access_supervised:
+    description: "General tool access allowed, but any high-risk operating system or direct database administration commands mandate human authorization."
+    allowed_tools:
+      - "*"
+    denied_tools: []
+    approval_required_tools:
+      - "execute_command"
+      - "bash"
+      - "powershell"
+      - "execute_sql"
+      - "delete_database"
+      - "deploy_production"
+    allow_unknown_tools: true

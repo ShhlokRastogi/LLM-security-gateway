@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  llm-security-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: llm-security-gateway
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - SECURITY_POLICY_MODE=balanced
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+    volumes:
+      - ./config:/app/config:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 5s

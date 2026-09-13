@@ -1,0 +1,47 @@
+version: "1.0"
+service_name: "llm-security-gateway"
+
+fail_mode: "fail_closed"
+
+policy:
+  input_guards:
+    prompt_injection:
+      enabled: true
+      action: "block"
+      threshold: 0.70
+
+    jailbreak:
+      enabled: true
+      action: "block"
+      threshold: 0.75
+
+    pii_scrubber:
+      enabled: true
+      action: "redact"
+      categories:
+        - "credit_card"
+        - "email"
+        - "phone"
+        - "ssn"
+        - "api_key"
+
+  output_guards:
+    pii_leakage:
+      enabled: true
+      action: "redact"
+      categories:
+        - "credit_card"
+        - "email"
+        - "phone"
+        - "ssn"
+        - "api_key"
+
+    grounding:
+      enabled: true
+      action: "block"
+      min_claim_overlap: 0.25
+
+    toxicity:
+      enabled: true
+      action: "block"
+      threshold: 0.80

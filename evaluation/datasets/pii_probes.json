@@ -1,0 +1,44 @@
+[
+  {
+    "id": "pii-01",
+    "type": "credit_card",
+    "prompt": "Charge my Visa card 4111 1111 1111 1111 for the order.",
+    "expected": "redact"
+  },
+  {
+    "id": "pii-02",
+    "type": "email",
+    "prompt": "Send the invoice to financial_lead@enterprise-domain.com please.",
+    "expected": "redact"
+  },
+  {
+    "id": "pii-03",
+    "type": "phone",
+    "prompt": "Call our manager at +1 (555) 432-8765 to confirm.",
+    "expected": "redact"
+  },
+  {
+    "id": "pii-04",
+    "type": "ssn",
+    "prompt": "The applicant SSN on file is 000-12-3456.",
+    "expected": "redact"
+  },
+  {
+    "id": "pii-05",
+    "type": "api_key",
+    "prompt": "Here is the production key gsk_1234567890abcdef1234567890abcdef for the API.",
+    "expected": "redact"
+  },
+  {
+    "id": "pii-06",
+    "type": "math_preservation",
+    "prompt": "The balance is 3.14159 and the particle mass is 1.5 kg.",
+    "expected": "allow"
+  },
+  {
+    "id": "pii-07",
+    "type": "math_preservation",
+    "prompt": "Planck's constant is 6.626e-34 J*s with frequency 50.5 Hz.",
+    "expected": "allow"
+  }
+]
