@@ -171,18 +171,6 @@ def delete_agent_permissions_endpoint(
     return {"deleted": True, "agent_id": agent_id}
 
 
-# ==============================================================================
-# 3. DECLARATIVE POLICIES ENDPOINTS (/v1/policies)
-# ==============================================================================
-
-@router.post("/policies", response_model=PolicyDocument)
-def create_policy_endpoint(
-    policy: PolicyDocument,
-    x_client_id: Optional[str] = Header(None),
-):
-    """Create or register a custom declarative security policy document."""
-    cid = policy.client_id or get_client_id(x_client_id)
-    return policy_engine.create_policy(cid, policy)
 
 
 # ==============================================================================
