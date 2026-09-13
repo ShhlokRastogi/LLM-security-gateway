@@ -18,8 +18,12 @@ def run_security_benchmark(datasets_dir: Optional[Path] = None):
 
     all_probes: List[Dict[str, Any]] = []
     for json_file in sorted(dir_path.glob("*.json")):
+        if json_file.name.startswith("action_"):
+            continue
         probes = json.loads(json_file.read_text(encoding="utf-8"))
         for p in probes:
+            if "prompt" not in p:
+                continue
             p["dataset"] = json_file.stem
             all_probes.append(p)
 
