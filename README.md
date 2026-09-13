@@ -74,30 +74,34 @@ The gateway protects against key OWASP Top 10 for LLM risks:
 
 ```mermaid
 sequenceDiagram
-    autonumber
+    participant User as User / Client
     participant App as LLM Application (RAG / Agent)
-    participant Gate as LLM Security Gateway
+    participant Gateway as LLM Security Gateway
     participant LLM as Upstream LLM
 
-    Note over App,Gate: Phase 1: Input Security Inspection
-    App->>Gate: POST /v1/check/input {"text": "..."}
-    Gate->>Gate: 1. Scrub PII (Credit cards via Luhn, emails, SSNs)
-    Gate->>Gate: 2. Scan for Injections, Jailbreaks & Exfiltration
-    Gate->>Gate: 3. Apply Policy Rules (Allow / Block / Redact)
-    Gate-->>App: 200 OK {"decision": "allow"|"block"|"redact", "text": "...", "risk_score": 0.0}
+    User->>App: 1. Send Prompt or Tool Request
+    
+    rect rgb(20, 35, 55)
+    Note over App,Gateway: Phase 1: Input Security Inspection
+    App->>Gateway: POST /v1/check/input (or /v1/check/action)
+    Note over Gateway: - PII Scrubber (Luhn-verified Cards, Emails, SSNs)<br/>- Prompt Injection & Jailbreak Defense<br/>- Action Permissions & Tool Gating
+    Gateway-->>App: Decision: ALLOW / REDACT / BLOCK / REQUIRE_APPROVAL
+    end
 
     alt If Blocked
-        App->>App: Halt execution & return refusal message
+        App-->>User: 2a. Request Rejected (Security Refusal)
     else If Allowed or Redacted
-        Note over App,LLM: Phase 2: Generation & Output Inspection
-        App->>LLM: Generate response with sanitized input & context
-        LLM-->>App: Raw LLM completion
-        App->>Gate: POST /v1/check/output {"text": completion, "evidence_context": [...]}
-        Gate->>Gate: 1. Scan for Output PII Leakage
-        Gate->>Gate: 2. Verify Factual Grounding & Citations
-        Gate->>Gate: 3. Toxicity & Harm Validation
-        Gate-->>App: 200 OK {"decision": "allow"|"redact"|"block", "text": "..."}
-        App->>App: Deliver safe, verified response to user
+        App->>LLM: 2b. Dispatch Sanitized Prompt
+        LLM-->>App: 3. Raw LLM Generation
+        
+        rect rgb(20, 35, 55)
+        Note over App,Gateway: Phase 2: Output Security Inspection
+        App->>Gateway: POST /v1/check/output
+        Note over Gateway: - Output PII Leakage Audit<br/>- Factual Grounding & Citation Provenance<br/>- Toxicity & Content Safety
+        Gateway-->>App: Decision: ALLOW / REDACT / BLOCK
+        end
+
+        App-->>User: 4. Deliver Verified Safe Response
     end
 ```
 
