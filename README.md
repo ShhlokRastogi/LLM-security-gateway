@@ -73,40 +73,57 @@ The gateway establishes and governs three fundamental security perimeters:
 
 ## 2. Request & Execution Flow
 
+### Action Security Gating Flow
+Every tool call proposed by an autonomous agent is intercepted and evaluated across four defense layers before any protected tool can be executed:
+
 ```mermaid
-sequenceDiagram
-    participant User as User / Client
-    participant Agent as Autonomous Agent
-    participant Gateway as Security Gateway
-    participant Tool as Target System / Tool
-
-    User->>Agent: 1. Prompt / Goal
-    Agent->>Gateway: 2. POST /v1/check/input
-    Note over Gateway: PII Scrubber (Luhn Algorithm)<br/>Prompt Injection & Jailbreak Defense
-    Gateway-->>Agent: ALLOW (Clean Input)
-
-    Agent->>Agent: 3. Plans Execution & Generates Tool Call
+flowchart TD
+    Start([1. Agent Generates Tool Call]) --> Gate{Security Gateway}
     
-    rect rgb(20, 35, 55)
-    Note over Agent,Gateway: Action Security Perimeter
-    Agent->>Gateway: 4. POST /v1/actions/check (Tool + Arguments)
-    Note over Gateway: 1. Permission Matrix Check<br/>2. Schema & Argument Validation<br/>3. Multi-factor Risk Scoring<br/>4. Declarative Policy Evaluation
+    subgraph Pipeline["Action Security Evaluation"]
+        Gate --> Perm["Layer 1: Permission Check\n(Is agent authorized for this tool?)"]
+        Perm -->|Pass| Val["Layer 2: Schema & Argument Validation\n(Type bounds, regex, path traversal)"]
+        Val -->|Pass| Risk["Layer 3: Multi-Factor Risk Assessment\n(Financial impact, environment, destruction)"]
+        Risk --> Policy["Layer 4: Declarative Policy AST\n(DENY > REQUIRE_APPROVAL > ALLOW)"]
     end
 
-    alt Policy: ALLOW
+    Perm -->|Fail| DenyAction([DENY: Prohibited Tool])
+    Val -->|Fail| DenyAction
+    
+    Policy --> Outcome{Decision Engine}
+    Outcome -->|ALLOW| Exec([Authorize & Execute Tool])
+    Outcome -->|DENY| Block([Halt Execution & Log Audit])
+    Outcome -->|REQUIRE_APPROVAL| Pending[Register Pending Approval Request\n(SHA-256 Hash + 15m TTL)]
+    
+    Pending --> HumanReview{Supervisor Review}
+    HumanReview -->|POST /v1/approvals/.../approve| Exec
+    HumanReview -->|POST /v1/approvals/.../deny| Block
+```
+
+### End-to-End Runtime Sequence
+
+```mermaid
+sequenceDiagram
+    participant Agent as Autonomous Agent
+    participant Gateway as Security Gateway
+    participant Supervisor as Human Supervisor
+    participant Tool as Target System
+
+    Agent->>Gateway: 1. POST /v1/actions/check (tool + arguments)
+    
+    alt Flow A: Safe Action (e.g. search_orders)
         Gateway-->>Agent: Decision: ALLOW (allowed_to_execute: true)
-        Agent->>Tool: 5a. Execute Tool
-        Tool-->>Agent: Execution Result
-    else Policy: REQUIRE_APPROVAL
-        Gateway-->>Agent: Decision: REQUIRE_APPROVAL (approval_id: "appr-xyz")
-        Note over Gateway,User: Human Supervisor Reviews Request via API / Dashboard
-        User->>Gateway: POST /v1/approvals/appr-xyz/approve
-        Agent->>Gateway: 5b. POST /v1/actions/check with approval_id
-        Gateway-->>Agent: Decision: ALLOW (Approval Consumed & Validated)
-        Agent->>Tool: Execute Tool
-    else Policy: DENY
-        Gateway-->>Agent: Decision: DENY (Execution Blocked)
-        Note over Agent: Tool is NEVER executed
+        Agent->>Tool: 2. Invoke Tool
+        Tool-->>Agent: 3. Execution Result
+    else Flow B: High-Risk Action (e.g. refund > $500)
+        Gateway-->>Agent: Decision: REQUIRE_APPROVAL (approval_id: "appr-...")
+        Supervisor->>Gateway: POST /v1/approvals/{id}/approve
+        Agent->>Gateway: POST /v1/actions/check (with approval_id)
+        Gateway-->>Agent: Decision: ALLOW (token consumed)
+        Agent->>Tool: Invoke Tool
+    else Flow C: Forbidden Action (e.g. delete_database)
+        Gateway-->>Agent: Decision: DENY (tool execution blocked)
+        Note over Agent: Execution halts. Tool is never called.
     end
 ```
 
