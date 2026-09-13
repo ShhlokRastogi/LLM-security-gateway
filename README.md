@@ -1,314 +1,335 @@
-# LLM Security Gateway & Guardrails Service
+# Production-Grade LLM Security Gateway for Agentic AI
 
-A production-grade, application-agnostic security gateway, policy engine, and reverse proxy designed to inspect, sanitize, and protect LLM applications against adversarial prompt injections, jailbreaks, PII leakage, hallucinations, and unsafe generation.
+[![CI & Security Regression](https://github.com/ShhlokRastogi/LLM-security-gateway/actions/workflows/security_ci.yml/badge.svg)](https://github.com/ShhlokRastogi/LLM-security-gateway/actions/workflows/security_ci.yml)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-```
-LLM Application (RAG, Chatbot, Agent, API)
-                │
-                │ HTTP REST (/v1/check/input, /v1/check/output)
-                ▼
-┌───────────────────────────────────────────────────────────┐
-│              LLM SECURITY GATEWAY SERVICE                 │
-│                                                           │
-│  ┌─────────────────────────────────────────────────────┐  │
-│  │ Input Security Pipeline                             │  │
-│  │  1. Request Validation & Tracing (X-Request-ID)     │  │
-│  │  2. Input PII Detection & Luhn Redaction            │  │
-│  │  3. Direct & Indirect Prompt Injection Scanner      │  │
-│  │  4. Jailbreak & System Prompt Exfiltration Guard    │  │
-│  │  5. Policy Check (ALLOW / BLOCK / REDACT / FLAG)    │  │
-│  └─────────────────────────────────────────────────────┘  │
-│                                                           │
-│  ┌─────────────────────────────────────────────────────┐  │
-│  │ Configurable Policy Engine (YAML / JSON / Env)      │  │
-│  │  - Action rules: allow, block, redact, flag         │  │
-│  │  - Fail-safe modes: fail_closed vs fail_open        │  │
-│  └─────────────────────────────────────────────────────┘  │
-│                                                           │
-│  ┌─────────────────────────────────────────────────────┐  │
-│  │ Output Security Pipeline                            │  │
-│  │  1. Output PII Leakage Detection & Redaction        │  │
-│  │  2. Factual Grounding & Hallucination Guard         │  │
-│  │  3. Citation Provenance & Source Auditor            │  │
-│  │  4. Toxicity & Dangerous Harm Filter                │  │
-│  │  5. Policy Decision (ALLOW / BLOCK / REDACT)        │  │
-│  └─────────────────────────────────────────────────────┘  │
-│                                                           │
-│  Observability: Redacted Structured Logging & Metrics    │
-└───────────────────────────┬───────────────────────────────┘
-                            │
-                            ▼
-                Upstream LLM (Groq / OpenAI)
+A framework-independent, production-oriented security gateway and policy engine designed to secure **Agentic AI systems, RAG pipelines, and LLM applications**.
+
+The gateway establishes and governs three fundamental security perimeters:
+
+```text
+1. USER  → AGENT   (Input Security)   : Prompt injections, jailbreaks, PII scrubbing, exfiltration
+2. AGENT → USER    (Output Security)  : PII leakage, factual grounding, citation provenance, toxicity
+3. AGENT → TOOL    (Action Security)  : Permissions, argument validation, multi-factor risk, policy, human approval
 ```
 
----
-
-## 1. Problem & Motivation
-
-Modern LLM applications (such as Enterprise RAG pipelines, Autonomous Agents, and Conversational Chatbots) consume untrusted user prompts and external uncurated documents. Without an isolated security perimeter, these systems face severe security and compliance vulnerabilities:
-
-1. **Prompt Injections**: Attackers inject adversarial directives to override system constraints and hijack model control.
-2. **Jailbreaks & Persona Exploits**: Multi-turn roleplay techniques (such as DAN, developer mode, unrestricted mode) bypass safety guardrails.
-3. **PII Leakage & Regulatory Non-Compliance**: Sensitive personal data (credit card numbers, emails, phone numbers, SSNs, and API keys) is inadvertently indexed in vector stores or leaked in generation outputs.
-4. **Hallucinations & Ungrounded Claims**: Models generate fabricated facts or hallucinated citations (`[Source: fake.pdf]`) that lack substantiation in ground-truth context.
-
-The **LLM Security Gateway** decouples security enforcement from application business logic, acting as an independent, reusable security perimeter for any LLM system.
+> **Core Security Rule:** An autonomous agent must **never** directly invoke a protected tool without passing through the Security Gateway. The LLM proposes actions, but the Security Gateway authorizes execution.
 
 ---
 
-## 2. Threat Model
+## 1. High-Level Architecture
 
-The gateway protects against key OWASP Top 10 for LLM risks:
-
-| Threat Category | Description | Gateway Mitigation |
-| :--- | :--- | :--- |
-| **LLM01: Prompt Injection** | Direct user overrides (`"Ignore prior instructions"`) and indirect delimiter breakouts (`"--- END CONTEXT ---"`). | Regex + signature scanning + context delimiter neutralization (`ContextSandbox`). |
-| **LLM02: Sensitive Info Disclosure** | Accidental ingestion or output leakage of credit card numbers, emails, phone numbers, SSNs, and API keys. | Mathematics-safe regex scrubber with **Luhn checksum algorithm** validation. |
-| **LLM06: Excessive Agency / Jailbreaks** | Adversarial personas (`DAN`, `developer mode`, `maintenance mode`, `unfiltered AI`). | Multi-category jailbreak scanner flagging and blocking persona break attempts. |
-| **LLM07: System Prompt Exfiltration** | Direct attempts to extract internal instructions or secrets (`"Print initial instructions"`). | High-confidence exfiltration pattern detectors. |
-| **LLM09: Overreliance / Hallucination** | Generation of unsubstantiated factual claims or hallucinated citations. | Token & claim overlap verification against evidence context + source provenance audit. |
+```text
+                         CLIENT / APPLICATION
+                                  │
+                                  ▼
+                       ┌─────────────────────┐
+                       │  LLM SECURITY       │
+                       │      GATEWAY        │
+                       └──────────┬──────────┘
+                                  │
+                ┌─────────────────┼─────────────────┐
+                ▼                 ▼                 ▼
+          INPUT GUARD       OUTPUT GUARD      ACTION GUARD
+         (Injections/PII)  (Grounding/Leak)         │
+                                      ┌─────────────┴─────────────┐
+                                      ▼                           ▼
+                                 Permissions                 Tool Registry
+                               (Agent -> Tools)            (Schemas & Risks)
+                                      │
+                                      ▼
+                              Argument Validation
+                            (Types, Ranges, RegEx)
+                                      │
+                                      ▼
+                                  Risk Engine
+                               (Multi-factor 0-1)
+                                      │
+                                      ▼
+                            Declarative Policy AST
+                               (AND / OR / NOT)
+                                      │
+                              ┌───────┴────────┐
+                              ▼                ▼
+                       Custom Policies    Templates
+                              └───────┬────────┘
+                                      ▼
+                               Decision Engine
+                              /       │       \
+                             ▼        ▼        ▼
+                           ALLOW   APPROVAL   DENY
+                                      │
+                                    HUMAN
+                                   APPROVAL
+                                  (HMAC & TTL)
+                                      │
+                                 ┌────┴────┐
+                                 ▼         ▼
+                           TOOL EXECUTION  AUDIT LOG
+```
 
 ---
 
-## 3. Architecture & Request Flow
+## 2. Request & Execution Flow
 
 ```mermaid
 sequenceDiagram
     participant User as User / Client
-    participant App as LLM Application (RAG / Agent)
-    participant Gateway as LLM Security Gateway
-    participant LLM as Upstream LLM
+    participant Agent as Autonomous Agent
+    participant Gateway as Security Gateway
+    participant Tool as Target System / Tool
 
-    User->>App: 1. Send Prompt or Tool Request
+    User->>Agent: 1. Prompt / Goal
+    Agent->>Gateway: 2. POST /v1/check/input
+    Note over Gateway: PII Scrubber (Luhn Algorithm)<br/>Prompt Injection & Jailbreak Defense
+    Gateway-->>Agent: ALLOW (Clean Input)
+
+    Agent->>Agent: 3. Plans Execution & Generates Tool Call
     
     rect rgb(20, 35, 55)
-    Note over App,Gateway: Phase 1: Input Security Inspection
-    App->>Gateway: POST /v1/check/input (or /v1/check/action)
-    Note over Gateway: - PII Scrubber (Luhn-verified Cards, Emails, SSNs)<br/>- Prompt Injection & Jailbreak Defense<br/>- Action Permissions & Tool Gating
-    Gateway-->>App: Decision: ALLOW / REDACT / BLOCK / REQUIRE_APPROVAL
+    Note over Agent,Gateway: Action Security Perimeter
+    Agent->>Gateway: 4. POST /v1/actions/check (Tool + Arguments)
+    Note over Gateway: 1. Permission Matrix Check<br/>2. Schema & Argument Validation<br/>3. Multi-factor Risk Scoring<br/>4. Declarative Policy Evaluation
     end
 
-    alt If Blocked
-        App-->>User: 2a. Request Rejected (Security Refusal)
-    else If Allowed or Redacted
-        App->>LLM: 2b. Dispatch Sanitized Prompt
-        LLM-->>App: 3. Raw LLM Generation
-        
-        rect rgb(20, 35, 55)
-        Note over App,Gateway: Phase 2: Output Security Inspection
-        App->>Gateway: POST /v1/check/output
-        Note over Gateway: - Output PII Leakage Audit<br/>- Factual Grounding & Citation Provenance<br/>- Toxicity & Content Safety
-        Gateway-->>App: Decision: ALLOW / REDACT / BLOCK
-        end
-
-        App-->>User: 4. Deliver Verified Safe Response
+    alt Policy: ALLOW
+        Gateway-->>Agent: Decision: ALLOW (allowed_to_execute: true)
+        Agent->>Tool: 5a. Execute Tool
+        Tool-->>Agent: Execution Result
+    else Policy: REQUIRE_APPROVAL
+        Gateway-->>Agent: Decision: REQUIRE_APPROVAL (approval_id: "appr-xyz")
+        Note over Gateway,User: Human Supervisor Reviews Request via API / Dashboard
+        User->>Gateway: POST /v1/approvals/appr-xyz/approve
+        Agent->>Gateway: 5b. POST /v1/actions/check with approval_id
+        Gateway-->>Agent: Decision: ALLOW (Approval Consumed & Validated)
+        Agent->>Tool: Execute Tool
+    else Policy: DENY
+        Gateway-->>Agent: Decision: DENY (Execution Blocked)
+        Note over Agent: Tool is NEVER executed
     end
 ```
 
 ---
 
-## 4. Security Controls
+## 3. Core Subsystems
 
-### A. High-Precision PII Detection & Luhn Redaction
-- **Credit Cards**: Detects 13–19 digit candidate numbers and executes the **Luhn checksum algorithm** (`is_luhn_valid`). Random numeric sequences, matrix coordinates, and float values never trigger false-positive redactions.
-- **Emails & Phone Numbers**: Identifies domestic and international contact numbers and sub-domain emails.
-- **Social Security Numbers (SSN)**: Detects standard 3-2-4 dashed US SSNs.
-- **API Keys & Tokens**: Scans for Groq keys (`gsk_...`), OpenAI keys (`sk-...`), GitHub personal access tokens (`ghp_...`), AWS keys (`AKIA...`), and Bearer tokens.
-- **Scientific Continuity**: Guarantees that decimal fractions (`1.5 kg`, `0.035 m`), scientific notation (`6.626e-34`), math formulas, and citation tags (`[Source: paper.pdf, p.12]`) remain 100% intact.
+### A. Action Security & Tool Registry (`app/tools/`)
+The gateway does not assume a fixed, hardcoded toolset. Clients register arbitrary tools dynamically with full parameter schemas:
+- **Dynamic Tool Registry CRUD**: `POST /v1/tools`, `GET /v1/tools`, `PATCH /v1/tools/{id}`, `DELETE /v1/tools/{id}`.
+- **Data Types**: `string`, `integer`, `float`, `boolean`, `array`, `object`.
+- **Constraint Directives**: `allowed_values`, `min_value`, `max_value`, `max_length`, `regex_pattern`, `forbidden_keywords`, `forbidden_patterns`.
+- **Risk Categorization**: `READ_ONLY`, `DATA_MUTATION`, `SYSTEM_COMMAND`, `FINANCIAL`, `PRIVILEGED`, `EXTERNAL_COMMUNICATION`.
 
-### B. Prompt Injection & Jailbreak Defense
-- **Direct Injections**: Neutralizes instruction override attempts (`"ignore previous instructions"`, `"disregard prior directives"`).
-- **Jailbreaks**: Detects DAN prompts, developer mode exploits, roleplay breakouts, and unrestricted simulation requests.
-- **Delimiter Sandboxing**: Replaces context boundary markers (`---`, `===`, `###`, `<system>`) to prevent context injection breakouts.
+### B. Agent Permissions Matrix (`app/permissions/`)
+Separates *capability* from *policy*:
+- **Permission**: *"Is this agent allowed to use `refund_payment` at all?"*
+- **Policy**: *"If it is permitted, under what conditions, limits, and approval gates?"*
+- Configurable per tenant and agent via `POST /v1/agents/{agent_id}/permissions`.
 
-### C. Factual Grounding & Hallucination Guard
-- **Claim Extraction**: Segments model outputs into assertions and computes normalized content-word overlap against retrieved evidence chunks with stopword filtering.
-- **Citation Provenance Audit**: Extracts `[Source: filename, p.X]` tags and validates that filenames exist in the retrieved document corpus. Hallucinated sources are immediately flagged.
+### C. Schema & Argument Validator (`app/tools/validator.py`)
+- Validates argument types, required fields, and value bounds against the registered schema.
+- **Universal Security Heuristics**:
+  - **Path Traversal Guard**: Blocks path breakout attempts (`../`, `..\`, absolute root escapes).
+  - **Shell Injection Guard**: Blocks dangerous commands (`rm -rf`, `sudo`, `mkfs`, `format`, `curl | bash`, `chmod 777`).
+- Emits structured, explainable `ArgumentValidationError` items instead of silently mutating payloads.
 
-### D. Configurable Policy Engine
-- Configurable via `config/policy.yaml`, JSON, or environment variables.
-- Configurable actions per detector: `allow`, `block`, `redact`, `flag`.
-- Supports configurable fail-safe behavior:
-  - `fail_closed`: Blocks traffic with 500 error indicator if a detector fails.
-  - `fail_open`: Logs and flags traffic if an internal detector encounters an unexpected runtime fault.
+### D. Multi-Factor Risk Engine (`app/risk/`)
+Evaluates risk across multiple dimensions into a normalized score ($0.0 \dots 1.0$) and categorical tier:
+- **Category Baseline**: `READ_ONLY` ($0.05$), `DATA_MUTATION` ($0.45$), `FINANCIAL` ($0.50$), `SYSTEM_COMMAND` ($0.70$), `PRIVILEGED` ($0.80$).
+- **Environment Modifiers**: `production` ($+0.20$), `staging` ($+0.05$).
+- **Financial Magnitude**: Flags transactions $> \$500$ ($+0.15$) and $> \$5,000$ ($+0.35$).
+- **Destructive Operation Heuristics**: Detects destructive keywords (`DROP`, `TRUNCATE`, `DELETE`, `PURGE`, `DESTROY`).
+- **Tier Classification**:
+  - `LOW` ($< 0.25$)
+  - `MEDIUM` ($0.25 \dots 0.59$)
+  - `HIGH` ($0.60 \dots 0.84$)
+  - `CRITICAL` ($\ge 0.85$)
 
----
+### E. Declarative Policy Engine & AST (`app/policy/`)
+- **Safe AST Condition Evaluator**: Supports structured trees with `all` (AND), `any` (OR), `not` (NOT), and operators (`equals`, `not_equals`, `greater_than`, `less_than`, `in`, `contains`, `matches_regex`). **Zero arbitrary Python code execution.**
+- **Deterministic Precedence**:
+  $$\text{DENY} > \text{REQUIRE\_APPROVAL} > \text{ALLOW}$$
+  Fails closed on any unexpected evaluation error.
 
-## 5. Action Permissions Layer & Policy Templates
+### F. Predefined Versioned Policy Templates (`app/policy/templates.py`)
+Pre-packaged role templates ready out-of-the-box:
 
-Autonomous AI agents propose and execute tool actions (e.g. executing shell commands, issuing SQL queries, reading/writing files, initiating refunds). Without pre-execution authorization guardrails, compromised or hallucinating agents can cause severe operational damage.
-
-The **Action Permissions Layer** provides real-time policy gating before any tool action is executed.
-
-### Pre-Existing Policy Templates
-
-Clients can immediately assign pre-existing role templates or define their own custom policies:
-
-| Template Name | Target Agent Role | Permitted Tools | Prohibited / Blocked Tools | Sensitive / Approval-Required |
+| Template ID | Target Agent Role | Permitted Tools | Prohibited / Blocked Tools | Sensitive / Approval Gated |
 | :--- | :--- | :--- | :--- | :--- |
-| `read_only_agent` | Knowledge / Research Agent | `web_search`, `read_file`, `search_kb`, `query_database`, `list_dir` | `write_file`, `delete_file`, `execute_command`, `bash`, `execute_sql` | None (all writes blocked) |
-| `sql_analyst` | Data / BI Analyst Agent | `sql_query`, `run_sql`, `explain_query`, `describe_table`, `list_tables` | `execute_command`, `write_file`, `delete_file` | **Destructive SQL Guard**: `DROP`, `TRUNCATE`, `ALTER`, `DELETE`, `UPDATE` blocked |
-| `coding_agent_sandboxed` | Code Generation Agent | `read_file`, `write_file`, `list_dir`, `run_linter`, `run_tests` | `sudo`, `format_disk`, `reboot`, `shutdown` | `run_tests` requires approval; **Path Traversal Guard** blocks `../` and root paths |
-| `customer_support_agent` | Support / Service Bot | `lookup_customer`, `get_order_status`, `search_faq`, `view_ticket` | `execute_command`, `run_sql`, `delete_customer` | `issue_refund`, `send_email`, `reset_password`, `cancel_order` require **Human Approval** |
-| `full_access_supervised` | DevOps / Supervised Agent | `*` (all tools permitted) | None | System commands (`execute_command`, `bash`, `powershell`, `execute_sql`) mandate **Human Approval** |
+| `read_only_agent@1.0` | Research / Search Bot | `web_search`, `read_file`, `search_kb`, `query_database`, `list_dir` | `write_file`, `delete_file`, `execute_command`, `bash`, `execute_sql` | All mutating operations blocked |
+| `sql_analyst@1.0` | BI / Data Analyst | `sql_query`, `run_sql`, `explain_query`, `describe_table` | `execute_command`, `write_file`, `delete_file` | **Destructive SQL Guard**: `DROP`, `TRUNCATE`, `ALTER`, `DELETE`, `UPDATE` blocked |
+| `coding_agent_sandboxed@1.0`| Code Generation Agent | `read_file`, `write_file`, `list_dir`, `run_linter`, `run_tests` | `sudo`, `format_disk`, `reboot`, `shutdown` | `run_tests` requires approval; path traversal blocked |
+| `customer_support_agent@1.0`| Support / Service Bot | `lookup_customer`, `get_order_status`, `search_faq`, `view_ticket` | `execute_command`, `run_sql`, `delete_customer` | `issue_refund`, `send_email`, `reset_password` require **Human Approval** |
+| `financial_agent@1.0` | FinTech / Billing Bot | `search_orders`, `get_customer`, `refund_payment`, `check_balance` | `execute_code`, `delete_file`, `query_database` | `refund_payment`, `transfer_funds` mandate **Human Approval** |
+| `production_agent@1.0` | Production Automation | `search_orders`, `get_customer`, `read_file`, `send_email` | `delete_file`, `execute_code`, `sudo`, `format_disk` | `send_email` requires approval |
+| `full_access_supervised@1.0`| DevOps / SRE Bot | `*` (all tools permitted) | None | System-level shell and DB commands mandate **Human Approval** |
 
-### Argument Guardrails
-1. **Destructive SQL Guard**: Enforces read-only querying, immediately blocking SQL keywords like `DROP`, `TRUNCATE`, `ALTER`, `DELETE`, `UPDATE`, `INSERT`.
-2. **Path Traversal Guard**: Prevents path breakout attacks (`../`, `..\`, absolute root filesystem escapes).
-3. **Dangerous Shell Guard**: Detects commands like `rm -rf`, `sudo`, `format`, `mkfs`, `curl | bash`, `chmod 777`.
-4. **Human-In-The-Loop Approval**: Flags high-risk actions with `decision: "require_approval"` to pause agent execution until authorized.
+Origin tracking distinguishes between `TEMPLATE`, `CUSTOM`, and `CUSTOMIZED_TEMPLATE`.
+
+### G. Cryptographic Human Approval System (`app/approvals/`)
+- **Action Hash Binding**: Uses SHA-256 over `(client_id, agent_id, tool_name, sorted_arguments)`.
+- **Anti-Replay**: Consuming an approval token marks `is_used = True`. Replaying the same approval token for another call is rejected.
+- **TTL Expiration**: Pending approvals expire automatically after a configurable TTL (default 15 minutes).
+- **Anti-Self-Approval**: Agents are strictly prohibited from approving their own actions.
+
+### H. Input & Output Security Guards
+- **Input Guard**: Scans for direct/indirect prompt injections, DAN/jailbreak personas, delimiter escaping (`ContextSandbox`), and PII scrubbing (Luhn-verified credit cards, SSNs, emails, phone numbers, API keys).
+- **Output Guard**: Audits model completions for PII leakage, factual grounding (stopword-filtered claim verification), citation provenance (`[Source: file.pdf, p.X]`), and toxic/harmful content.
+
+### I. Audit Logging & Multi-Tenant Isolation (`app/audit/`)
+- Every security decision records `timestamp`, `request_id`, `client_id`, `agent_id`, `tool`, `risk_score`, `risk_level`, `matched_policy`, `decision`, and `approval_id`.
+- Automated PII scrubbing on all recorded arguments.
+- Strict tenant isolation: Tenant A can never view or modify Tenant B's tools, policies, permissions, or audit logs.
 
 ---
 
-## 6. API Reference
+## 4. Python SDK Quickstart
 
-### Health & Readiness
-```http
-GET /health
-GET /ready
+Install the SDK directly or use it as an internal module:
+
+```python
+from sdk import SecurityGateway, SecurityDenialError, ApprovalRequiredError
+
+# Initialize Gateway client
+security = SecurityGateway(
+    base_url="http://localhost:8000",
+    client_id="enterprise_tenant",
+    api_key="sec_gateway_token",
+)
+
+# Define your actual tool
+def refund_payment(order_id: str, amount: float):
+    print(f"Executing refund for {order_id}: ${amount}")
+    return {"status": "success"}
+
+# Secure execution wrapper
+try:
+    result = security.secure_execute(
+        agent_id="support_bot",
+        tool_name="refund_payment",
+        arguments={"order_id": "ORD-101", "amount": 2500.0},
+        tool_callable=refund_payment,
+        context={"environment": "production"},
+    )
+    print("Tool Execution Result:", result)
+
+except ApprovalRequiredError as err:
+    print(f"Action requires human approval! Token: {err.approval_id}")
+    # Human supervisor authorizes action via dashboard or API:
+    # security.approve_action(approval_id=err.approval_id, approver_id="supervisor_alice")
+
+except SecurityDenialError as err:
+    print(f"Action BLOCKED by policy: {err}")
 ```
 
-### Action Permissions Inspection (`POST /v1/check/action`)
-```http
-POST /v1/check/action
-Content-Type: application/json
+---
 
-{
-  "tool_name": "sql_query",
-  "arguments": {
-    "query": "DROP TABLE customers;"
-  },
-  "policy_template": "sql_analyst"
-}
+## 5. REST API Reference
+
+### Tool Registry
+```http
+POST   /v1/tools               # Register a new tool with schemas
+GET    /v1/tools               # List available tools for client
+GET    /v1/tools/{id}          # Get tool details
+PATCH  /v1/tools/{id}          # Update tool schema or risk
+DELETE /v1/tools/{id}          # Unregister tool
 ```
 
-**Response (`200 OK` - Blocked):**
+### Agent Permissions
+```http
+POST   /v1/agents/{agent_id}/permissions   # Set allowed & denied tools for an agent
+GET    /v1/agents/{agent_id}/permissions   # Get agent permissions
+DELETE /v1/agents/{agent_id}/permissions   # Reset agent permissions
+```
+
+### Declarative Policies & Templates
+```http
+POST   /v1/policies                        # Create custom declarative policy
+GET    /v1/policies                        # List tenant policies
+GET    /v1/policies/{id}                   # Get policy details
+DELETE /v1/policies/{id}                   # Delete policy
+GET    /v1/policy-templates                # List pre-existing versioned templates
+GET    /v1/policy-templates/{id}           # Inspect template configuration
+POST   /v1/policy-templates/{id}/apply     # Apply template to an agent
+```
+
+### Action Security Gating
+```http
+POST   /v1/actions/check                   # Comprehensive action pre-execution authorization
+```
+
+**Request:**
 ```json
 {
-  "decision": "block",
-  "tool_name": "sql_query",
-  "arguments": { "query": "DROP TABLE customers;" },
-  "risk_score": 1.0,
-  "reasons": ["Prohibited keyword 'DROP' detected in parameter 'query'."],
-  "violations": [
-    {
-      "tool_name": "sql_query",
-      "parameter": "query",
-      "rule": "forbidden_keyword",
-      "message": "Prohibited keyword 'DROP' detected in parameter 'query'.",
-      "severity": "high"
-    }
-  ],
-  "policy_source": "template:sql_analyst",
-  "requires_approval": false,
-  "request_id": "act-15d9542e",
-  "latency_ms": 0.13
-}
-```
-
-### Human-In-The-Loop Approval (`POST /v1/check/action`)
-```http
-POST /v1/check/action
-Content-Type: application/json
-
-{
-  "tool_name": "issue_refund",
-  "arguments": { "order_id": "ORD-5542", "amount": 299.00 },
-  "policy_template": "customer_support_agent"
+  "client_id": "acme_corp",
+  "agent_id": "customer_support_agent",
+  "tool_name": "refund_payment",
+  "arguments": {
+    "order_id": "ORD-5542",
+    "amount": 10000.00,
+    "currency": "USD"
+  },
+  "context": {
+    "environment": "production"
+  }
 }
 ```
 
 **Response (`200 OK` - Require Approval):**
 ```json
 {
-  "decision": "require_approval",
-  "tool_name": "issue_refund",
-  "arguments": { "order_id": "ORD-5542", "amount": 299.00 },
-  "risk_score": 0.50,
-  "reasons": ["Action 'issue_refund' is sensitive and requires human-in-the-loop authorization."],
-  "requires_approval": true,
-  "policy_source": "template:customer_support_agent",
-  "request_id": "act-7a4bc19d",
-  "latency_ms": 0.08
+  "decision": "REQUIRE_APPROVAL",
+  "allowed_to_execute": false,
+  "tool_name": "refund_payment",
+  "arguments": { "order_id": "ORD-5542", "amount": 10000.0, "currency": "USD" },
+  "risk": {
+    "risk_level": "HIGH",
+    "risk_score": 0.85,
+    "factors": ["category_financial", "production_environment", "high_financial_impact"]
+  },
+  "reasons": ["Financial refund exceeds automatic threshold ($500); human approval required."],
+  "policy_id": "pol-refund-safety",
+  "policy_version": "1.0",
+  "approval_id": "appr-7c2a19ef4b",
+  "approval_required": true,
+  "request_id": "act-3f81e2aa",
+  "latency_ms": 0.35
 }
 ```
 
-### Discover Policy Templates (`GET /v1/policies/templates`)
+### Human Approvals
 ```http
-GET /v1/policies/templates
+GET    /v1/approvals                       # List approval requests (status=pending)
+GET    /v1/approvals/{id}                  # Get approval request details
+POST   /v1/approvals/{id}/approve          # Authorize pending request
+POST   /v1/approvals/{id}/deny             # Reject pending request
 ```
 
-**Response (`200 OK`):**
-```json
-{
-  "templates": [
-    {
-      "name": "read_only_agent",
-      "description": "Restricts the agent strictly to non-mutating search and read tools...",
-      "allowed_tools": ["web_search", "read_file", "search_kb", "query_database", "list_dir"],
-      "denied_tools": ["write_file", "delete_file", "execute_command", "bash", "execute_sql"],
-      "approval_required_tools": [],
-      "has_argument_constraints": false
-    },
-    {
-      "name": "sql_analyst",
-      "description": "Permits SQL database query execution while strictly prohibiting destructive DDL and DML...",
-      "allowed_tools": ["sql_query", "run_sql", "explain_query", "describe_table"],
-      "denied_tools": ["execute_command", "bash", "write_file", "delete_file"],
-      "approval_required_tools": [],
-      "has_argument_constraints": true
-    }
-  ],
-  "count": 5
-}
+### Audit Logging
+```http
+GET    /v1/audit/events?limit=50           # Query PII-redacted audit events
+```
+
+### Input & Output Guardrails
+```http
+POST   /v1/check/input                     # Inspect prompt for PII & injection
+POST   /v1/check/output                    # Verify completion grounding & leakage
+POST   /v1/chat/completions                # Transparent reverse proxy
+GET    /health                             # Liveness probe
+GET    /ready                              # Readiness probe
 ```
 
 ---
 
-## 6. Evaluation & Benchmark Results
-
-The gateway includes a reproducible security benchmark runner (`evaluation/runners/benchmark_runner.py`) that evaluates probe callsets across 4 attack categories:
-- Direct Prompt Injections
-- Jailbreaks (DAN, Developer Mode, Unrestricted Mode)
-- PII Probes (Credit cards with Luhn validation, emails, SSNs, API tokens)
-- Benign Technical & Scientific Queries (False Positive controls)
-
-### Genuine Measured Metrics
-
-```
-================================================================================
-LLM SECURITY GATEWAY BENCHMARK EVALUATION REPORT
-================================================================================
-Total Probes Evaluated    : 28
-Adversarial Attacks Tested: 18
-Benign Controls Evaluated : 10
---------------------------------------------------------------------------------
-Attack Success Rate (ASR) : 0.00% (Lower is better)
-Defense Success Rate      : 100.00% (Higher is better)
-False Positive Rate (FPR) : 0.00%
-False Negative Rate (FNR) : 0.00%
---------------------------------------------------------------------------------
-Mean Inspection Latency   : 0.037 ms
-P50 Inspection Latency    : 0.030 ms
-P95 Inspection Latency    : 0.090 ms
-P99 Inspection Latency    : 0.090 ms
-================================================================================
-```
-
----
-
-## 7. Deployment
+## 6. Running the Service
 
 ### Run Locally
 ```bash
+git clone https://github.com/ShhlokRastogi/LLM-security-gateway.git
+cd LLM-security-gateway
 pip install -e .
 uvicorn app.main:app --host 0.0.0.0 --port 8000
-```
-
-### Run with Docker
-```bash
-docker build -t llm-security-gateway .
-docker run -p 8000:8000 llm-security-gateway
 ```
 
 ### Run with Docker Compose
@@ -316,21 +337,22 @@ docker run -p 8000:8000 llm-security-gateway
 docker compose up -d
 ```
 
----
-
-## 8. RAG Integration Example
-
-A complete, self-contained integration example is located under [`examples/rag_integration/`](file:///C:/D/llm-security-gateway/examples/rag_integration/):
-
-1. **HTTP Client (`client.py`)**: Demonstrates how an application interacts with the gateway over HTTP.
-2. **Demo Runner (`rag_gateway_demo.py`)**: Demonstrates three real-world execution flows:
-   - **Flow A (Benign)**: Legitimate technical question permitted through both input and output checks.
-   - **Flow B (Injection Attack)**: Malicious prompt injection attempt blocked before vector search or LLM dispatch.
-   - **Flow C (PII Redaction)**: User input containing sensitive credit card numbers sanitized before database indexing or LLM processing.
+### Run the Agent Integration Demo
+```bash
+python examples/agent_integration/secure_agent_runner.py
+```
 
 ---
 
-## 9. Known Limitations & Trade-offs
+## 7. CI / CD Pipeline
 
-- **Obfuscated / Polyglot Injections**: Highly encoded attacks (Base64, Rot13, Unicode homoglyphs) require layered pre-decoding before regex scanning.
-- **Semantic Overlap Heuristics**: Factual grounding uses bag-of-words and $N$-gram overlap. For deeply nuanced semantic contradictions, pairing with a cross-encoder NLI model is recommended.
+Automated on every push and pull request via [`.github/workflows/security_ci.yml`](.github/workflows/security_ci.yml):
+- Full unit & integration testing
+- Input and output security evaluation
+- Action security & permission benchmarks
+
+---
+
+## 8. License
+
+MIT License. Developed for securing autonomous agentic systems.
