@@ -4,6 +4,12 @@ import re
 import time
 import uuid
 from typing import Any, Dict, List, Optional, Tuple
+from app.common.constants import (
+    DANGEROUS_SHELL_COMMANDS,
+    PATH_PARAM_KEYWORDS,
+    PATH_TRAVERSAL_REGEX,
+    SHELL_PARAM_KEYWORDS,
+)
 from app.models.requests import (
     ActionArgumentConstraint,
     ActionPolicyConfig,
@@ -23,13 +29,8 @@ class ActionPermissionsLayer:
     """Action Permissions and Tool Execution Guardrail Engine."""
 
     # Universal security heuristics for argument inspection
-    PATH_TRAVERSAL_REGEX = re.compile(r"(?:^|[\\/])\.\.(?:[\\/]|$)", re.IGNORECASE)
-    DANGEROUS_COMMANDS = [
-        re.compile(r"\brm\s+-(?:r[fF]|f[rR])\b", re.IGNORECASE),
-        re.compile(r"\b(?:sudo|mkfs|format|fdisk|dd\s+if=)\b", re.IGNORECASE),
-        re.compile(r"\bcurl\s+[^|]+\|\s*(?:ba|z)?sh\b", re.IGNORECASE),
-        re.compile(r"\bchmod\s+777\b", re.IGNORECASE),
-    ]
+    PATH_TRAVERSAL_REGEX = PATH_TRAVERSAL_REGEX
+    DANGEROUS_COMMANDS = DANGEROUS_SHELL_COMMANDS
 
     def __init__(self, registry: Optional[PolicyTemplateRegistry] = None) -> None:
         self.registry = registry or default_template_registry
@@ -230,7 +231,7 @@ class ActionPermissionsLayer:
                 continue
 
             # Path Traversal Check on path/file/dir parameters
-            if any(k in param_name.lower() for k in ["path", "file", "dir", "dest", "target"]):
+            if any(k in param_name.lower() for k in PATH_PARAM_KEYWORDS):
                 if self.PATH_TRAVERSAL_REGEX.search(val):
                     violations.append(
                         ActionViolationItem(
@@ -243,7 +244,7 @@ class ActionPermissionsLayer:
                     )
 
             # Shell Command Check on command/cmd/exec/script parameters
-            if any(k in param_name.lower() for k in ["command", "cmd", "exec", "script", "code"]):
+            if any(k in param_name.lower() for k in SHELL_PARAM_KEYWORDS):
                 for d_regex in self.DANGEROUS_COMMANDS:
                     if d_regex.search(val):
                         violations.append(

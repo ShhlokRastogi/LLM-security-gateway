@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-import time
-from typing import Any, Dict, List
 import statistics
+import sys
+import time
+from typing import Any, Dict, List, Optional
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from security_gateway.config import SecurityConfig
 from security_gateway.gateway import SecurityGateway

@@ -213,6 +213,9 @@ class PolicyTemplateRegistry:
             self.load_from_file(templates_file)
         else:
             default_path = Path("config/action_templates.yaml")
+            if not default_path.exists():
+                repo_root = Path(__file__).resolve().parent.parent.parent
+                default_path = repo_root / "config" / "action_templates.yaml"
             if default_path.exists():
                 self.load_from_file(str(default_path))
 

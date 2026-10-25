@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 from typing import Any, Dict, List, Optional
+from app.common.constants import DESTRUCTIVE_KEYWORDS
 from app.risk.models import RiskAssessment, RiskLevel
 from app.tools.models import ToolDefinition, ToolRiskCategory
 
@@ -9,9 +10,7 @@ from app.tools.models import ToolDefinition, ToolRiskCategory
 class RiskEngine:
     """Modular, multi-factor risk assessment engine for agent tool-call execution."""
 
-    DESTRUCTIVE_KEYWORDS = [
-        "DROP", "TRUNCATE", "DELETE", "PURGE", "DESTROY", "FORMAT", "RM -RF", "SHUTDOWN", "KILL", "DROP_DATABASE"
-    ]
+    DESTRUCTIVE_KEYWORDS = DESTRUCTIVE_KEYWORDS
 
     CATEGORY_BASELINES = {
         ToolRiskCategory.READ_ONLY: 0.05,

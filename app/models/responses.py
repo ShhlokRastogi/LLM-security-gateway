@@ -35,6 +35,16 @@ class SecurityDecision(BaseModel):
     request_id: str = Field(..., description="Unique request tracing ID")
     latency_ms: float = Field(default=0.0, description="Total inspection latency in milliseconds")
 
+    @property
+    def action(self) -> SecurityAction:
+        """Alias for decision to support alternative client interfaces."""
+        return self.decision
+
+    @property
+    def allowed(self) -> bool:
+        """True if the payload was permitted to proceed (allow or redact)."""
+        return self.decision in (SecurityAction.ALLOW, SecurityAction.REDACT)
+
 
 # --- Action Permissions Response Models ---
 

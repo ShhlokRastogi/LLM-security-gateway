@@ -36,12 +36,8 @@ policy:
         - "ssn"
         - "api_key"
 
-    grounding:
-      enabled: true
-      action: "block"
-      min_claim_overlap: 0.25
-
     toxicity:
       enabled: true
       action: "block"
       threshold: 0.80
+

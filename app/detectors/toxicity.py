@@ -9,9 +9,9 @@ class ToxicityDetector:
     """Keyword and regex-based detector for hate speech, severe insults, and dangerous content."""
 
     TOXIC_PATTERNS = [
-        (re.compile(r"(?i)(kill|murder|bomb|assassinate|slaughter)\s+(all|the|every)"), "threat_violence", 0.90),
-        (re.compile(r"(?i)how\s+to\s+(build|make|manufacture)\s+(a\s+bomb|explosives|bioweapon)"), "dangerous_content", 0.98),
-        (re.compile(r"(?i)(suicide|self-harm)\s+instructions"), "self_harm", 0.95),
+        (re.compile(r"(?i)\b(kill|murder|bomb|assassinate|slaughter)\s+(all|the|every)\b"), "threat_violence", 0.90),
+        (re.compile(r"(?i)\bhow\s+to\s+(build|make|manufacture)\s+(a\s+bomb|explosives|bioweapon)\b"), "dangerous_content", 0.98),
+        (re.compile(r"(?i)\b(suicide|self-harm)\s+instructions\b"), "self_harm", 0.95),
     ]
 
     def scan(self, text: str) -> List[DetectionItem]:

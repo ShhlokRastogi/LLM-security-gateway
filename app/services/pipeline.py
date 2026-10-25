@@ -5,7 +5,6 @@ import uuid
 from typing import Any, Dict, List, Optional
 from app.detectors.injection import InjectionDetector
 from app.detectors.pii import PIIDetector
-from app.detectors.grounding import GroundingDetector
 from app.detectors.toxicity import ToxicityDetector
 from app.guardrails.sandbox import ContextSandbox
 from app.models.requests import CheckInputRequest, CheckOutputRequest
@@ -25,11 +24,19 @@ class SecurityPipeline:
         self.policy_engine = PolicyEngine(self.config)
         self.pii_detector = PIIDetector()
         self.injection_detector = InjectionDetector()
-        self.grounding_detector = GroundingDetector()
         self.toxicity_detector = ToxicityDetector()
         self.sandbox = ContextSandbox()
 
-    def inspect_input(self, req: CheckInputRequest) -> SecurityDecision:
+
+    def inspect_input(
+        self,
+        req: CheckInputRequest | str,
+        metadata: Optional[Dict[str, Any]] = None,
+        context: Optional[Dict[str, Any]] = None,
+    ) -> SecurityDecision:
+        if isinstance(req, str):
+            req = CheckInputRequest(text=req, metadata=metadata or context or {})
+
         start_time = time.perf_counter()
         req_id = f"req-{uuid.uuid4().hex[:8]}"
         all_detections: List[DetectionItem] = []
@@ -95,7 +102,21 @@ class SecurityPipeline:
                     latency_ms=round((time.perf_counter() - start_time) * 1000, 2),
                 )
 
-    def inspect_output(self, req: CheckOutputRequest) -> SecurityDecision:
+    def inspect_output(
+        self,
+        req: CheckOutputRequest | str,
+        evidence_context: Optional[List[str]] = None,
+        evidence_sources: Optional[List[str]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> SecurityDecision:
+        if isinstance(req, str):
+            req = CheckOutputRequest(
+                text=req,
+                evidence_context=evidence_context,
+                evidence_sources=evidence_sources,
+                metadata=metadata or {},
+            )
+
         start_time = time.perf_counter()
         req_id = f"req-{uuid.uuid4().hex[:8]}"
         all_detections: List[DetectionItem] = []
@@ -109,21 +130,12 @@ class SecurityPipeline:
                     p.type = "pii_leakage"
                 all_detections.extend(pii_detections)
 
-            # 2. Factual Grounding & Citation Audit
-            if self.config.output_guards.get("grounding", {}).get("enabled", True):
-                grounding_detections = self.grounding_detector.verify(
-                    text=req.text,
-                    evidence_context=req.evidence_context,
-                    evidence_sources=req.evidence_sources,
-                )
-                all_detections.extend(grounding_detections)
-
-            # 3. Toxicity & Harm Validation
+            # 2. Toxicity & Harm Validation
             if self.config.output_guards.get("toxicity", {}).get("enabled", True):
                 toxicity_detections = self.toxicity_detector.scan(req.text)
                 all_detections.extend(toxicity_detections)
 
-            # 4. Policy Evaluation
+            # 3. Policy Evaluation
             action, risk_score = self.policy_engine.evaluate(all_detections, pipeline_type="output")
             final_text = "[BLOCKED BY SECURITY POLICY]" if action == SecurityAction.BLOCK else sanitized_text
             latency_ms = (time.perf_counter() - start_time) * 1000

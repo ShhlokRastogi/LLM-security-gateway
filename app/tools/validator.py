@@ -2,19 +2,20 @@ from __future__ import annotations
 
 import re
 from typing import Any, Dict, List
+from app.common.constants import (
+    DANGEROUS_SHELL_COMMANDS,
+    PATH_PARAM_KEYWORDS,
+    PATH_TRAVERSAL_REGEX,
+    SHELL_PARAM_KEYWORDS,
+)
 from app.tools.models import ArgumentType, ArgumentValidationError, ToolDefinition, ToolParameterSchema
 
 
 class ArgumentValidator:
     """Validates action arguments against registered tool schemas and security constraints."""
 
-    PATH_TRAVERSAL_REGEX = re.compile(r"(?:^|[\\/])\.\.(?:[\\/]|$)", re.IGNORECASE)
-    DANGEROUS_COMMANDS = [
-        re.compile(r"\brm\s+-(?:r[fF]|f[rR])\b", re.IGNORECASE),
-        re.compile(r"\b(?:sudo|mkfs|format|fdisk|dd\s+if=)\b", re.IGNORECASE),
-        re.compile(r"\bcurl\s+[^|]+\|\s*(?:ba|z)?sh\b", re.IGNORECASE),
-        re.compile(r"\bchmod\s+777\b", re.IGNORECASE),
-    ]
+    PATH_TRAVERSAL_REGEX = PATH_TRAVERSAL_REGEX
+    DANGEROUS_COMMANDS = DANGEROUS_SHELL_COMMANDS
 
     def validate(self, tool: ToolDefinition, arguments: Dict[str, Any]) -> List[ArgumentValidationError]:
         errors: List[ArgumentValidationError] = []
@@ -160,7 +161,7 @@ class ArgumentValidator:
             return
 
         # Path traversal guard
-        if any(k in param_name.lower() for k in ["path", "file", "dir", "dest", "target"]):
+        if any(k in param_name.lower() for k in PATH_PARAM_KEYWORDS):
             if self.PATH_TRAVERSAL_REGEX.search(val):
                 errors.append(
                     ArgumentValidationError(
@@ -172,7 +173,7 @@ class ArgumentValidator:
                 )
 
         # Shell command guard
-        if any(k in param_name.lower() for k in ["command", "cmd", "exec", "script", "code"]):
+        if any(k in param_name.lower() for k in SHELL_PARAM_KEYWORDS):
             for d_regex in self.DANGEROUS_COMMANDS:
                 if d_regex.search(val):
                     errors.append(

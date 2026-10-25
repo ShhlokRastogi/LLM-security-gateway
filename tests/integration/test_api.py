@@ -21,7 +21,8 @@ def test_ready_endpoint(client):
     assert res.status_code == 200
     data = res.json()
     assert data["ready"] is True
-    assert len(data["detectors_initialized"]) >= 4
+    assert len(data["detectors_initialized"]) >= 3
+
 
 
 def test_check_input_benign(client):

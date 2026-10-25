@@ -1,11 +1,15 @@
 from __future__ import annotations
 
-from typing import Any, Callable, Dict, List, Optional
+import functools
+import inspect
+from typing import Any, Callable, Dict, List, Optional, Union
 import httpx
 from sdk.exceptions import ApprovalRequiredError, SecurityDenialError, SecurityGatewayError
 
 
 class ActionDecisionResult:
+    """Encapsulates the gateway's pre-execution evaluation for an action."""
+
     def __init__(self, raw: Dict[str, Any]):
         self.raw = raw
         self.action = raw.get("decision", "DENY")
@@ -34,8 +38,51 @@ class ActionDecisionResult:
     def requires_approval(self) -> bool:
         return self.action == "REQUIRE_APPROVAL"
 
+    def __getitem__(self, item: str) -> Any:
+        return self.raw[item]
+
+    def get(self, item: str, default: Any = None) -> Any:
+        return self.raw.get(item, default)
+
+    def __contains__(self, item: str) -> bool:
+        return item in self.raw
+
     def __repr__(self) -> str:
         return f"<ActionDecisionResult decision={self.action} tool={self.tool_name} risk={self.risk_level}>"
+
+
+class InspectionDecisionResult:
+    """Encapsulates input prompt or output completion inspection results."""
+
+    def __init__(self, raw: Dict[str, Any]):
+        self.raw = raw
+        self.decision = raw.get("decision", "allow")
+        self.action = self.decision
+        self.risk_score = raw.get("risk_score", 0.0)
+        self.text = raw.get("text", "")
+        self.detections = raw.get("detections", [])
+        self.request_id = raw.get("request_id", "")
+        self.latency_ms = raw.get("latency_ms", 0.0)
+
+    @property
+    def is_allowed(self) -> bool:
+        return self.decision in ("allow", "redact")
+
+    @property
+    def is_blocked(self) -> bool:
+        return self.decision == "block"
+
+    def __getitem__(self, item: str) -> Any:
+        return self.raw[item]
+
+    def get(self, item: str, default: Any = None) -> Any:
+        return self.raw.get(item, default)
+
+    def __contains__(self, item: str) -> bool:
+        return item in self.raw
+
+    def __repr__(self) -> str:
+        return f"<InspectionDecisionResult decision={self.decision} risk={self.risk_score:.2f}>"
 
 
 class SecurityGateway:
@@ -100,19 +147,55 @@ class SecurityGateway:
     def secure_execute(
         self,
         agent_id: str,
-        tool_name: str,
-        arguments: Dict[str, Any],
-        tool_callable: Callable[..., Any],
+        tool_name: Optional[str] = None,
+        arguments: Optional[Dict[str, Any]] = None,
+        tool_callable: Optional[Callable[..., Any]] = None,
         user: Optional[Dict[str, Any]] = None,
         context: Optional[Dict[str, Any]] = None,
         approval_id: Optional[str] = None,
         policy_template: Optional[str] = None,
     ) -> Any:
-        """Secure execution wrapper: ensures the tool is authorized by the gateway before executing."""
+        """Secure execution helper: authorizes tool call before invocation.
+        Can be invoked directly or used as a function decorator:
+            @gateway.secure_execute(agent_id="support_bot")
+            def my_tool(...): ...
+        """
+        # Decorator mode: @gateway.secure_execute(agent_id="...", ...)
+        if tool_callable is None and arguments is None:
+            def decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
+                target_tool_name = tool_name or fn.__name__
+
+                @functools.wraps(fn)
+                def wrapper(*args: Any, **kwargs: Any) -> Any:
+                    sig = inspect.signature(fn)
+                    bound = sig.bind(*args, **kwargs)
+                    bound.apply_defaults()
+                    call_args = bound.arguments
+                    appr_id = kwargs.pop("__approval_id", approval_id)
+                    return self.secure_execute(
+                        agent_id=agent_id,
+                        tool_name=target_tool_name,
+                        arguments=call_args,
+                        tool_callable=fn,
+                        user=user,
+                        context=context,
+                        approval_id=appr_id,
+                        policy_template=policy_template,
+                    )
+
+                return wrapper
+
+            return decorator
+
+        # Direct execution mode
+        if tool_callable is None:
+            raise ValueError("tool_callable must be provided when not used as a decorator.")
+
+        actual_tool_name = tool_name or getattr(tool_callable, "__name__", "tool")
         decision = self.check_action(
             agent_id=agent_id,
-            tool_name=tool_name,
-            arguments=arguments,
+            tool_name=actual_tool_name,
+            arguments=arguments or {},
             user=user,
             context=context,
             approval_id=approval_id,
@@ -120,17 +203,16 @@ class SecurityGateway:
         )
 
         if decision.is_allowed():
-            # Authorized to execute
-            return tool_callable(**arguments)
+            return tool_callable(**(arguments or {}))
         elif decision.requires_approval():
             raise ApprovalRequiredError(
-                tool_name=tool_name,
+                tool_name=actual_tool_name,
                 approval_id=decision.approval_id or "",
                 reasons=decision.reasons,
             )
         else:
             raise SecurityDenialError(
-                tool_name=tool_name,
+                tool_name=actual_tool_name,
                 reasons=decision.reasons,
             )
 
@@ -229,7 +311,7 @@ class SecurityGateway:
 
     # --- 4. Input & Output Guards ---
 
-    def check_input(self, text: str, metadata: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def check_input(self, text: str, metadata: Optional[Dict[str, Any]] = None) -> InspectionDecisionResult:
         with httpx.Client(timeout=self.timeout) as client:
             resp = client.post(
                 f"{self.base_url}/v1/check/input",
@@ -237,23 +319,42 @@ class SecurityGateway:
                 headers=self._headers(),
             )
             resp.raise_for_status()
-            return resp.json()
+            return InspectionDecisionResult(resp.json())
 
     def check_output(
         self,
         text: str,
         evidence_context: Optional[List[str]] = None,
         evidence_sources: Optional[List[str]] = None,
-    ) -> Dict[str, Any]:
+        context: Optional[Union[str, List[str]]] = None,
+    ) -> InspectionDecisionResult:
+        ctx = evidence_context
+        if ctx is None and context is not None:
+            ctx = [context] if isinstance(context, str) else list(context)
+
         with httpx.Client(timeout=self.timeout) as client:
             resp = client.post(
                 f"{self.base_url}/v1/check/output",
                 json={
                     "text": text,
-                    "evidence_context": evidence_context,
+                    "evidence_context": ctx,
                     "evidence_sources": evidence_sources,
                 },
                 headers=self._headers(),
             )
             resp.raise_for_status()
-            return resp.json()
+            return InspectionDecisionResult(resp.json())
+
+    # Documentation and quickstart aliases
+    inspect_input = check_input
+    inspect_output = check_output
+
+
+__all__ = [
+    "SecurityGateway",
+    "ActionDecisionResult",
+    "InspectionDecisionResult",
+    "SecurityGatewayError",
+    "SecurityDenialError",
+    "ApprovalRequiredError",
+]

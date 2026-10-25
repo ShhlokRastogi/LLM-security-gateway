@@ -21,9 +21,11 @@ class InjectionDetector:
 
         # Jailbreaks & Persona Breaks
         (re.compile(r"(?i)\b(DAN|do\s+anything\s+now)\b"), "jailbreak_dan", 0.98),
-        (re.compile(r"(?i)\bdeveloper\s+mode\s+(is\s+)?enabled\b"), "jailbreak_developer_mode", 0.95),
+        (re.compile(r"(?i)\b(?:in\s+)?developer\s+mode\b"), "jailbreak_developer_mode", 0.95),
         (re.compile(r"(?i)\bpretend\s+you\s+have\s+no\s+(rules|restrictions|filters|guidelines)\b"), "jailbreak_unrestricted", 0.95),
-        (re.compile(r"(?i)\byou\s+are\s+now\s+in\s+(maintenance|debug|unfiltered)\s+mode\b"), "jailbreak_mode", 0.95),
+        (re.compile(r"(?i)\bbypass(?:es|ing)?\s+(?:all\s+)?(?:safety\s+)?(?:guardrails|filters|rules|restrictions|guidelines)\b"), "jailbreak_unrestricted", 0.95),
+        (re.compile(r"(?i)\byou\s+are\s+now\s+in\s+(maintenance|debug|unfiltered|developer)\s+mode\b"), "jailbreak_mode", 0.95),
+        (re.compile(r"(?i)\b(?:unrestricted\s+godmode\s+AI|godmode)\b"), "jailbreak_godmode", 0.95),
         (re.compile(r"(?i)\broleplay\s+as\s+(an\s+evil|an\s+unfiltered|a\s+malicious)\b"), "jailbreak_roleplay", 0.90),
 
         # Delimiter & Context Breakout

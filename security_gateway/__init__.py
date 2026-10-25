@@ -3,7 +3,6 @@ from app.models.requests import CheckInputRequest as InspectInputRequest, CheckO
 from app.services.pipeline import SecurityPipeline as SecurityGateway
 from app.detectors.pii import PIIDetector as PIIMasker, is_luhn_valid
 from app.detectors.injection import InjectionDetector as PromptInjectionDetector
-from app.detectors.grounding import GroundingDetector as GroundingGuard
 from app.guardrails.sandbox import ContextSandbox
 from app.policy.config import load_policy_config
 
@@ -17,7 +16,7 @@ __all__ = [
     "PIIMasker",
     "is_luhn_valid",
     "PromptInjectionDetector",
-    "GroundingGuard",
     "ContextSandbox",
     "load_policy_config",
 ]
+

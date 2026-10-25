@@ -5,16 +5,13 @@ import threading
 import uuid
 from typing import Dict, List, Optional
 from app.audit.models import AuditEvent
+from app.common.constants import DEFAULT_AUDIT_PII_SCRUBBERS
 
 
 class AuditLogger:
     """Multi-tenant, PII-scrubbed audit logger suitable for SIEM, database, and compliance auditing."""
 
-    PII_SCRUBBERS = [
-        (re.compile(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+"), "[REDACTED_EMAIL]"),
-        (re.compile(r"\b\d{3}-\d{2}-\d{4}\b"), "[REDACTED_SSN]"),
-        (re.compile(r"\b(?:\d[ -]?){13,19}\b"), "[REDACTED_CARD]"),
-    ]
+    PII_SCRUBBERS = DEFAULT_AUDIT_PII_SCRUBBERS
 
     def __init__(self, max_events_per_tenant: int = 1000) -> None:
         self._lock = threading.RLock()

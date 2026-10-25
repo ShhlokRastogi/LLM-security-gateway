@@ -15,5 +15,6 @@ def health_check():
 def readiness_check():
     return ReadyResponse(
         ready=True,
-        detectors_initialized=["pii_scrubber", "prompt_injection", "grounding_guard", "toxicity_filter"]
+        detectors_initialized=["pii_scrubber", "prompt_injection", "toxicity_filter"]
     )
+

@@ -24,13 +24,19 @@ class PolicyConfig(BaseModel):
     })
     output_guards: Dict[str, Any] = Field(default_factory=lambda: {
         "pii_leakage": {"enabled": True, "action": "redact"},
-        "grounding": {"enabled": True, "action": "block", "min_claim_overlap": 0.25},
         "toxicity": {"enabled": True, "action": "block", "threshold": 0.80},
     })
 
 
+
 def load_policy_config(config_path: Optional[str] = None) -> PolicyConfig:
-    p = Path(config_path) if config_path else Path("config/policy.yaml")
+    if config_path:
+        p = Path(config_path)
+    else:
+        p = Path("config/policy.yaml")
+        if not p.exists():
+            repo_root = Path(__file__).resolve().parent.parent.parent
+            p = repo_root / "config" / "policy.yaml"
     if p.exists():
         try:
             content = p.read_text(encoding="utf-8")
